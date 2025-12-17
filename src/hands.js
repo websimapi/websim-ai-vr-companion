@@ -27,6 +27,8 @@ export function updateHands() {
 }
 
 export function getHandGestures() {
+    if (!handModels.left || !handModels.right) return { summary: "Hands initializing" };
+
     let data = {
         left: detectGesture(handModels.left),
         right: detectGesture(handModels.right),
@@ -47,21 +49,24 @@ export function getHandGestures() {
 }
 
 function detectGesture(hand) {
-    if (!hand || !hand.children.length) return null;
+    // Basic check if hand is tracking
+    if (!hand || !hand.visible) return null;
     
-    // Simple heuristic-based detection
-    // Note: The mesh model might not expose joints directly in a simple array in all versions, 
-    // but we can check position/rotation of the controller group.
+    // If the mesh is present, we can infer it's tracking
+    // The hand group position is relative to the camera rig parent usually
+    // In standard three.js VR, hand group position is in world space if not parented to a rig, 
+    // or local to camera offset. We are adding hands to Scene directly.
     
-    // For robust logic, we'd traverse hand.joints, but to keep it lightweight:
-    // We will check simple height and rotation.
-
-    const y = hand.position.y;
+    const pos = hand.position;
     
-    if (y > 1.6) return "raised high (waving?)";
-    if (y < 0.8) return "lowered";
+    // Basic heuristics
+    if (pos.y > 1.6) return "raised high (waving?)";
+    if (pos.y < 0.8) return "lowered";
+    if (pos.z < -0.5) return "reaching out";
     
-    // We can assume if it's visible it's "interacting"
-    return "active";
+    // Check joints if we can access the underlying controller/joint data easily, 
+    // but for now positional heuristics are safer across different XR implementations
+    
+    return "active in front";
 }
 

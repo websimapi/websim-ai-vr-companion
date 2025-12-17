@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { createScene } from './scene.js';
 import { setupHands, updateHands, getHandGestures } from './hands.js';
 import { AIAgent } from './ai-agent.js';
@@ -17,9 +16,6 @@ renderer.xr.enabled = true;
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 
-// VR Button
-document.body.appendChild(VRButton.createButton(renderer));
-
 // Scene Content
 createScene(scene);
 
@@ -36,22 +32,79 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// UI Handling for Overlay
+// UI Handling
 const overlay = document.getElementById('overlay');
 const statusDiv = document.getElementById('status');
+const uiPanel = document.getElementById('ui-panel');
 
-renderer.xr.addEventListener('sessionstart', () => {
-    overlay.style.display = 'none';
-    // Play startup sound
-    const audio = new Audio('/startup.mp3');
-    audio.volume = 0.5;
-    audio.play().catch(e => console.warn("Audio play failed", e));
-});
+// Create Custom VR Button
+const vrButton = document.createElement('button');
+vrButton.textContent = "ENTER VR";
+vrButton.style.display = 'none';
+uiPanel.appendChild(vrButton);
 
-renderer.xr.addEventListener('sessionend', () => {
+let currentSession = null;
+
+async function onEnterVR() {
+    if (currentSession) return;
+    
+    // Prevent double clicks
+    vrButton.disabled = true;
+    vrButton.textContent = "INITIALIZING...";
+
+    const sessionInit = { 
+        optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'layers'] 
+    };
+
+    try {
+        const session = await navigator.xr.requestSession('immersive-vr', sessionInit);
+        renderer.xr.setSession(session);
+        currentSession = session;
+        session.addEventListener('end', onSessionEnd);
+        
+        // Hide overlay on success
+        overlay.style.display = 'none';
+        
+        // Sound
+        const audio = new Audio('/startup.mp3');
+        audio.volume = 0.5;
+        audio.play().catch(e => console.warn("Audio play failed", e));
+
+    } catch (e) {
+        console.error("Failed to start VR session:", e);
+        statusDiv.textContent = "Could not enter VR: " + e.message;
+        resetVRButton();
+    }
+}
+
+function onSessionEnd() {
+    currentSession = null;
     overlay.style.display = 'flex';
-    statusDiv.innerHTML = "VR Session ended.<br>Click 'Enter VR' to restart.";
-});
+    statusDiv.textContent = "VR Session Ended";
+    resetVRButton();
+}
+
+function resetVRButton() {
+    vrButton.disabled = false;
+    vrButton.textContent = "ENTER VR";
+}
+
+vrButton.addEventListener('click', onEnterVR);
+
+// Check WebXR support
+if ('xr' in navigator) {
+    navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
+        if (supported) {
+            vrButton.style.display = 'inline-block';
+            statusDiv.textContent = "Ready for VR. Hand tracking required.";
+        } else {
+            statusDiv.innerHTML = "VR Not Supported on this device.<br>Please use a Meta Quest or WebXR compatible headset.";
+            vrButton.style.display = 'none';
+        }
+    });
+} else {
+    statusDiv.textContent = "WebXR not available in this browser.";
+}
 
 // Loop
 const clock = new THREE.Clock();
@@ -66,17 +119,4 @@ renderer.setAnimationLoop(() => {
     
     renderer.render(scene, camera);
 });
-
-// Check WebXR support for status update
-if ('xr' in navigator) {
-    navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
-        if (supported) {
-            statusDiv.textContent = "VR Supported. Press the 'ENTER VR' button below.";
-        } else {
-            statusDiv.innerHTML = "VR Not Supported on this device.<br>Please use a Quest or WebXR compatible headset.";
-        }
-    });
-} else {
-    statusDiv.textContent = "WebXR not available in this browser.";
-}
 
